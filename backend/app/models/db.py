@@ -10,10 +10,11 @@ from sqlalchemy import (
     String,
 )
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
-from sqlalchemy.orm import declarative_base
+from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.types import CHAR, TypeDecorator
 
-Base = declarative_base()
+class Base(DeclarativeBase):
+    pass
 
 
 class GUID(TypeDecorator):
