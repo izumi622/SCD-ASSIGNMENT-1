@@ -50,9 +50,11 @@ jobs:
         working-directory: frontend
         run: npm ci
 
-      - name: Frontend typecheck
+      - name: Frontend ESLint and typecheck
         working-directory: frontend
-        run: npx tsc --noEmit
+        run: |
+          npm run lint
+          npx tsc --noEmit
 
   # ── Backend Tests (PostgreSQL + Redis service containers) ──
   test-backend:
