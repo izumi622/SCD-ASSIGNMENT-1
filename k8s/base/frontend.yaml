@@ -26,7 +26,7 @@ spec:
         - name: frontend
           image: ghcr.io/civicpulse/frontend:IMAGE_TAG  # Set by CI/CD (commit SHA)
           ports:
-            - containerPort: 80
+            - containerPort: 8080
           resources:
             requests:
               cpu: 50m
@@ -37,7 +37,7 @@ spec:
           readinessProbe:
             httpGet:
               path: /
-              port: 80
+              port: 8080
             initialDelaySeconds: 3
             periodSeconds: 5
           livenessProbe:
@@ -57,4 +57,4 @@ spec:
     app: frontend
   ports:
     - port: 80
-      targetPort: 80
+      targetPort: 8080
