@@ -35,6 +35,7 @@ export function useComplaints(
   page: number,
   status?: string,
   priority?: string,
+  category?: string,
 ) {
   const [data, setData] = useState<PaginatedResponse<Complaint> | null>(null);
   const [loading, setLoading] = useState(true);
@@ -49,6 +50,7 @@ export function useComplaints(
         page_size: 10,
         status: status || undefined,
         priority: priority || undefined,
+        category: category || undefined,
       });
       setData(res);
     } catch (e) {
@@ -56,7 +58,7 @@ export function useComplaints(
     } finally {
       setLoading(false);
     }
-  }, [page, status, priority]);
+  }, [page, status, priority, category]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -92,16 +94,16 @@ export function usePatchStatus() {
   const [error, setError] = useState<string | null>(null);
 
   const patch = useCallback(
-    async (id: string, newStatus: Status): Promise<Complaint | null> => {
+    async (id: string, newStatus: Status): Promise<{ data?: Complaint; error?: string }> => {
       setLoading(id);
       setError(null);
       try {
         const result = await api.updateComplaintStatus(id, newStatus);
-        return result;
+        return { data: result };
       } catch (e) {
-        const msg = e instanceof APIError ? e.message : "Update failed";
+        const msg = e instanceof APIError ? e.message : (e instanceof Error ? e.message : "Update failed");
         setError(msg);
-        return null;
+        return { error: msg };
       } finally {
         setLoading(null);
       }

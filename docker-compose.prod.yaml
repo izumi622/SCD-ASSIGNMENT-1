@@ -1,15 +1,31 @@
 # docker-compose.prod.yaml — Production overrides
 #
 # Usage:
-#   docker compose -f docker-compose.yaml -f docker-compose.prod.yaml up -d
+#   IMAGE_TAG=<commit-sha> docker compose -f docker-compose.yaml -f docker-compose.prod.yaml up -d
 #
-# Uses pre-built images from a container registry.
+# IMAGE_TAG is REQUIRED — never defaults to 'latest' in production.
 
 services:
+  # ── PostgreSQL — no exposed ports in production ────────
+  postgres:
+    ports: !override []
+
+  # ── Redis — no exposed ports in production ─────────────
+  redis:
+    ports: !override []
+
+  # ── Ollama — no exposed ports in production ────────────
+  ollama:
+    ports: !override []
+
+  # ── Backend — pre-built image, no bind mounts, no host ports
   backend:
-    image: ${REGISTRY:-ghcr.io/civicpulse}/backend:${IMAGE_TAG:-latest}
+    image: ${REGISTRY:-ghcr.io/izumi622/scd-assignment-1}/backend:${IMAGE_TAG:?Set IMAGE_TAG to a commit SHA}
     build: !reset null
+    volumes: !override []
+    command: !reset null
     restart: always
+    ports: !override []
     deploy:
       replicas: 2
       resources:
@@ -20,8 +36,14 @@ services:
       ENVIRONMENT: production
       LOG_LEVEL: WARNING
 
+  # ── Migrations — same pre-built backend image ──────────
+  migrations:
+    image: ${REGISTRY:-ghcr.io/izumi622/scd-assignment-1}/backend:${IMAGE_TAG:?Set IMAGE_TAG to a commit SHA}
+    build: !reset null
+
+  # ── Frontend — pre-built image, published only on port 80
   frontend:
-    image: ${REGISTRY:-ghcr.io/civicpulse}/frontend:${IMAGE_TAG:-latest}
+    image: ${REGISTRY:-ghcr.io/izumi622/scd-assignment-1}/frontend:${IMAGE_TAG:?Set IMAGE_TAG to a commit SHA}
     build: !reset null
     restart: always
     deploy:
@@ -30,7 +52,5 @@ services:
         limits:
           cpus: "0.25"
           memory: 256M
-
-  migrations:
-    image: ${REGISTRY:-ghcr.io/civicpulse}/backend:${IMAGE_TAG:-latest}
-    build: !reset null
+    ports: !override
+      - "80:8080"

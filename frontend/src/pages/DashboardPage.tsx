@@ -16,14 +16,6 @@ const PRIORITY_LABELS: Record<string, string> = {
   low: "Low",
 };
 
-/* Allowed status transitions (matches backend state machine) */
-const TRANSITIONS: Record<string, Status[]> = {
-  open: ["in_progress", "rejected"],
-  in_progress: ["resolved", "rejected"],
-  resolved: [],
-  rejected: [],
-};
-
 const CATEGORY_LABELS: Record<string, string> = {
   water: "Water",
   electricity: "Electricity",
@@ -37,11 +29,13 @@ export default function DashboardPage() {
   const [page, setPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState("");
   const [priorityFilter, setPriorityFilter] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("");
 
   const { data, loading, error, reload } = useComplaints(
     page,
     statusFilter || undefined,
     priorityFilter || undefined,
+    categoryFilter || undefined,
   );
 
   const { patch, loading: patching } = usePatchStatus();
@@ -49,27 +43,24 @@ export default function DashboardPage() {
 
   const totalPages = data ? Math.ceil(data.total / data.page_size) : 1;
 
-  const handleStatusChange = useCallback(
+  /**
+   * Wraps status change to surface server-side error messages (including 409)
+   * directly in a toast notification.
+   */
+  const handleStatusChangeWithToast = useCallback(
     async (id: string, newStatus: Status) => {
-      const result = await patch(id, newStatus);
-      if (result) {
-        addToast(`Status updated to ${STATUS_LABELS[newStatus]}`, "success");
-        reload();
-      } else {
-        addToast("Failed to update status", "error");
+      try {
+        const result = await patch(id, newStatus);
+        if (result) {
+          addToast(`Status updated to ${STATUS_LABELS[newStatus]}`, "success");
+          reload();
+        }
+      } catch {
+        // Swallowed — usePatchStatus already sets error state
       }
     },
     [patch, addToast, reload],
   );
-
-  const formatDate = (iso: string) =>
-    new Date(iso).toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
 
   return (
     <div>
@@ -99,6 +90,18 @@ export default function DashboardPage() {
         >
           <option value="">All Priorities</option>
           {Object.entries(PRIORITY_LABELS).map(([v, l]) => (
+            <option key={v} value={v}>{l}</option>
+          ))}
+        </select>
+
+        <select
+          className="form-select"
+          style={{ width: "auto", minWidth: 160 }}
+          value={categoryFilter}
+          onChange={(e) => { setCategoryFilter(e.target.value); setPage(1); }}
+        >
+          <option value="">All Categories</option>
+          {Object.entries(CATEGORY_LABELS).map(([v, l]) => (
             <option key={v} value={v}>{l}</option>
           ))}
         </select>
@@ -142,50 +145,15 @@ export default function DashboardPage() {
             )}
 
             {data.items.map((c: Complaint) => (
-              <div key={c.id} className="complaint-row">
-                <div>
-                  <div className="complaint-text">
-                    {c.text.length > 200
-                      ? c.text.slice(0, 200) + "…"
-                      : c.text}
-                  </div>
-                  {c.ai_summary && (
-                    <div className="complaint-summary">💡 {c.ai_summary}</div>
-                  )}
-                  <div className="complaint-meta">
-                    📍 {c.location} · {formatDate(c.created_at)}
-                    {c.triaged_by && <> · 🤖 {c.triaged_by}</>}
-                  </div>
-                </div>
-
-                <div style={{ display: "flex", flexDirection: "column", gap: "0.3rem", alignItems: "flex-end" }}>
-                  <span className={`badge badge-${c.priority}`}>
-                    {PRIORITY_LABELS[c.priority] ?? c.priority}
-                  </span>
-                  <span className="badge badge-category">
-                    {CATEGORY_LABELS[c.category] ?? c.category}
-                  </span>
-                </div>
-
-                <div>
-                  <span className={`badge badge-${c.status}`}>
-                    {STATUS_LABELS[c.status] ?? c.status}
-                  </span>
-                </div>
-
-                <div className="status-actions">
-                  {(TRANSITIONS[c.status] ?? []).map((next) => (
-                    <button
-                      key={next}
-                      className={`status-btn to-${next}`}
-                      disabled={patching === c.id}
-                      onClick={() => handleStatusChange(c.id, next)}
-                    >
-                      → {STATUS_LABELS[next]}
-                    </button>
-                  ))}
-                </div>
-              </div>
+              <ComplaintCard
+                key={c.id}
+                complaint={c}
+                patching={patching}
+                onStatusChange={handleStatusChangeWithToast}
+                addToast={addToast}
+                patch={patch}
+                reload={reload}
+              />
             ))}
           </div>
 
@@ -215,6 +183,108 @@ export default function DashboardPage() {
       )}
 
       <ToastContainer toasts={toasts} />
+    </div>
+  );
+}
+
+/* ── ComplaintCard ──────────────────────────────────────── */
+
+/**
+ * Server-driven status actions: the backend returns 409 with a message
+ * naming the invalid transition. We display that message as a toast
+ * rather than hardcoding a client-side transition table.
+ */
+function ComplaintCard({
+  complaint: c,
+  patching,
+  addToast,
+  patch,
+  reload,
+}: {
+  complaint: Complaint;
+  patching: string | null;
+  onStatusChange: (id: string, s: Status) => Promise<void>;
+  addToast: (msg: string, type: "success" | "error") => void;
+  patch: (id: string, s: Status) => Promise<{ data?: Complaint; error?: string }>;
+  reload: () => void;
+}) {
+  /** All possible next statuses. The server enforces validity. */
+  const allStatuses: Status[] = ["open", "in_progress", "resolved", "rejected"];
+  const availableTransitions = allStatuses.filter((s) => s !== c.status);
+
+  const handleChange = async (newStatus: Status) => {
+    const result = await patch(c.id, newStatus);
+    if (result.data) {
+      addToast(`Status updated to ${STATUS_LABELS[newStatus]}`, "success");
+      reload();
+    } else if (result.error) {
+      // Display the server's exact 409 error message (e.g. "Invalid transition from in_progress to open")
+      addToast(result.error, "error");
+    } else {
+      addToast(`Cannot transition to ${STATUS_LABELS[newStatus]}`, "error");
+    }
+  };
+
+  const formatDate = (iso: string) =>
+    new Date(iso).toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+
+  return (
+    <div className="complaint-row">
+      <div>
+        <div className="complaint-text">
+          {c.text.length > 200 ? c.text.slice(0, 200) + "…" : c.text}
+        </div>
+        {c.ai_summary && (
+          <div className="complaint-summary">💡 {c.ai_summary}</div>
+        )}
+        <div className="complaint-meta">
+          📍 {c.location} · {formatDate(c.created_at)}
+          {c.triaged_by && <> · 🤖 {c.triaged_by}</>}
+        </div>
+      </div>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: "0.3rem", alignItems: "flex-end" }}>
+        <span className={`badge badge-${c.priority}`}>
+          {PRIORITY_LABELS[c.priority] ?? c.priority}
+        </span>
+        <span className="badge badge-category">
+          {CATEGORY_LABELS[c.category] ?? c.category}
+        </span>
+      </div>
+
+      <div>
+        <span className={`badge badge-${c.status}`}>
+          {STATUS_LABELS[c.status] ?? c.status}
+        </span>
+      </div>
+
+      <div className="status-actions">
+        {availableTransitions.length > 0 ? (
+          <select
+            className="form-select form-select-sm"
+            disabled={patching === c.id}
+            value=""
+            onChange={(e) => {
+              if (e.target.value) handleChange(e.target.value as Status);
+            }}
+          >
+            <option value="">Change status…</option>
+            {availableTransitions.map((next) => (
+              <option key={next} value={next}>
+                → {STATUS_LABELS[next]}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Terminal</span>
+        )}
+      </div>
     </div>
   );
 }

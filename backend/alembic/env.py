@@ -1,11 +1,18 @@
 import asyncio
+import sys
 from logging.config import fileConfig
+from pathlib import Path
 
-from alembic import context
+# Ensure the project root (/app in Docker) is on sys.path so that
+# `from app.core.config import ...` resolves correctly when Alembic
+# is invoked as a CLI tool inside a container.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
+from alembic import context
 from app.core.config import get_settings
 from app.models.db import Base
 
@@ -25,6 +32,8 @@ settings = get_settings()
 
 # Use configured database URL
 db_url = settings.SYNC_DATABASE_URL or settings.DATABASE_URL
+if db_url.startswith("postgresql://"):
+    db_url = db_url.replace("postgresql://", "postgresql+psycopg2://", 1)
 config.set_main_option("sqlalchemy.url", db_url)
 
 
@@ -71,6 +80,7 @@ def run_migrations_online() -> None:
         asyncio.run(run_async_migrations())
     else:
         from sqlalchemy import create_engine
+
         connectable = create_engine(db_url, poolclass=pool.NullPool)
         with connectable.connect() as connection:
             do_run_migrations(connection)

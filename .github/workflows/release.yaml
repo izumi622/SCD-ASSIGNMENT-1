@@ -1,10 +1,10 @@
-# ── Release Pipeline — Tag-based immutable production release ──
+# ── Release Pipeline — Tag-based release with semver images & notes ──
 name: Release
 
 on:
   push:
     tags:
-      - "v[0-9]+.[0-9]+.[0-9]+"
+      - "v*"
 
 permissions:
   contents: write
@@ -12,13 +12,76 @@ permissions:
 
 env:
   REGISTRY: ghcr.io
-  BACKEND_IMAGE: ghcr.io/${{ github.repository }}/backend
-  FRONTEND_IMAGE: ghcr.io/${{ github.repository }}/frontend
+  BACKEND_IMAGE: ghcr.io/izumi622/scd-assignment-1/backend
+  FRONTEND_IMAGE: ghcr.io/izumi622/scd-assignment-1/frontend
 
 jobs:
-  release-build:
+  # ── Gating: Ensure tests pass before tagging release artifacts ─────
+  release-test:
+    name: Release Test Gate
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: test_user
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_DB: test_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U test_user"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql+asyncpg://test_user:test_password@localhost:5432/test_db
+      SYNC_DATABASE_URL: postgresql://test_user:test_password@localhost:5432/test_db
+      REDIS_URL: redis://localhost:6379/0
+      TRIAGE_PROVIDER: simulated
+      ENVIRONMENT: testing
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run backend unit tests
+        working-directory: backend
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-asyncio pytest-cov httpx
+          alembic upgrade head
+          pytest tests/ -v
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Run frontend tests
+        working-directory: frontend
+        run: |
+          npm ci
+          npm test
+
+  # ── Build & Publish Release ───────────────────────────
+  release-publish:
     name: Build & Release Tagged Images
     runs-on: ubuntu-latest
+    needs: [release-test]
     steps:
       - uses: actions/checkout@v4
 
@@ -41,9 +104,7 @@ jobs:
         with:
           context: ./backend
           push: true
-          tags: |
-            ${{ env.BACKEND_IMAGE }}:${{ steps.meta.outputs.tag }}
-            ${{ env.BACKEND_IMAGE }}:latest
+          tags: ${{ env.BACKEND_IMAGE }}:${{ steps.meta.outputs.tag }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -52,9 +113,7 @@ jobs:
         with:
           context: ./frontend
           push: true
-          tags: |
-            ${{ env.FRONTEND_IMAGE }}:${{ steps.meta.outputs.tag }}
-            ${{ env.FRONTEND_IMAGE }}:latest
+          tags: ${{ env.FRONTEND_IMAGE }}:${{ steps.meta.outputs.tag }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 

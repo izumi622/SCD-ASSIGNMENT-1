@@ -1,9 +1,10 @@
-# ── CI Pipeline — Lint, Test, Coverage, Security & Smoke Tests ──
+# ── CI Pipeline — Lint, Typecheck, Test, Security & Smoke Tests ──
+# Triggered on pull requests to main and on pushes to dev
 name: CI
 
 on:
   push:
-    branches: [main, develop]
+    branches: [dev]
   pull_request:
     branches: [main]
 
@@ -15,46 +16,62 @@ env:
   NODE_VERSION: "20"
 
 jobs:
-  # ── Backend: Lint + Test ─────────────────────────────
-  backend-lint:
-    name: Backend Lint & Type Check
+  # ── Backend & Frontend: Lint & Typecheck ─────────────
+  lint-and-type:
+    name: Lint & Typecheck
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
-      - name: Install dependencies
+      - name: Install backend linters
         working-directory: backend
         run: |
           pip install --upgrade pip
-          pip install ruff mypy
+          pip install -r requirements.txt ruff mypy
 
-      - name: Ruff check
+      - name: Backend Ruff check & format
         working-directory: backend
-        run: ruff check .
+        run: |
+          ruff check .
+          ruff format --check .
+          mypy app/
 
-      - name: Ruff format check
-        working-directory: backend
-        run: ruff format --check .
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
 
-  backend-test:
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Frontend ESLint and typecheck
+        working-directory: frontend
+        run: |
+          npm run lint
+          npx tsc --noEmit
+
+  # ── Backend Tests (PostgreSQL + Redis service containers) ──
+  test-backend:
     name: Backend Tests & Coverage (>= 65%)
     runs-on: ubuntu-latest
-    needs: backend-lint
+    needs: lint-and-type
     services:
       postgres:
         image: postgres:16-alpine
         env:
-          POSTGRES_USER: test
-          POSTGRES_PASSWORD: test
+          POSTGRES_USER: test_user
+          POSTGRES_PASSWORD: test_password
           POSTGRES_DB: test_db
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U test"
+          --health-cmd "pg_isready -U test_user"
           --health-interval 5s
           --health-timeout 3s
           --health-retries 5
@@ -68,11 +85,11 @@ jobs:
           --health-timeout 3s
           --health-retries 5
     env:
-      DATABASE_URL: postgresql+asyncpg://test:test@localhost:5432/test_db
-      SYNC_DATABASE_URL: postgresql://test:test@localhost:5432/test_db
+      DATABASE_URL: postgresql+asyncpg://test_user:test_password@localhost:5432/test_db
+      SYNC_DATABASE_URL: postgresql://test_user:test_password@localhost:5432/test_db
       REDIS_URL: redis://localhost:6379/0
       TRIAGE_PROVIDER: simulated
-      ENVIRONMENT: test
+      ENVIRONMENT: testing
     steps:
       - uses: actions/checkout@v4
 
@@ -102,10 +119,11 @@ jobs:
           name: backend-coverage
           path: backend/coverage.xml
 
-  # ── Frontend: Lint + Test + Build ────────────────────
-  frontend-test:
-    name: Frontend Lint, Test & Build
+  # ── Frontend Vitest Suite & Production Build ─────────
+  test-frontend:
+    name: Frontend Tests & Build
     runs-on: ubuntu-latest
+    needs: lint-and-type
     steps:
       - uses: actions/checkout@v4
 
@@ -116,10 +134,6 @@ jobs:
       - name: Install dependencies
         working-directory: frontend
         run: npm ci
-
-      - name: Type check
-        working-directory: frontend
-        run: npx tsc --noEmit
 
       - name: Run Vitest component tests
         working-directory: frontend
@@ -147,15 +161,17 @@ jobs:
           curl -sL https://github.com/yannh/kubeconform/releases/latest/download/kubeconform-linux-amd64.tar.gz | tar -xz
           sudo mv kubeconform /usr/local/bin/
 
-      - name: Validate Kubernetes Manifests
-        run: |
-          kubeconform -summary -strict -ignore-missing-schemas k8s/*.yaml
+      - name: Install kubectl for Kustomize
+        uses: azure/setup-kubectl@v4
 
-  # ── Docker Build & Security Scanning (Trivy) ─────────
-  docker-and-security:
-    name: Docker Build & Vulnerability Scan
+      - name: Validate rendered production manifests
+        run: kubectl kustomize k8s/overlays/prod | kubeconform -summary -strict -ignore-missing-schemas -
+
+  # ── Security Scan (Trivy) ────────────────────────────
+  trivy-scan:
+    name: Docker Build & Trivy Scan
     runs-on: ubuntu-latest
-    needs: [backend-test, frontend-test]
+    needs: [test-backend, test-frontend]
     steps:
       - uses: actions/checkout@v4
 
@@ -165,42 +181,66 @@ jobs:
       - name: Build frontend image
         run: docker build -t civicpulse-frontend:ci ./frontend
 
-      - name: Run Trivy vulnerability scanner on backend
-        uses: aquasecurity/trivy-action@master
+      - name: Run Trivy scanner on backend
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: civicpulse-backend:ci
           format: "table"
-          exit-code: "0"
+          exit-code: "1"
           ignore-unfixed: true
           severity: "CRITICAL,HIGH"
 
-      - name: Run Trivy vulnerability scanner on frontend
-        uses: aquasecurity/trivy-action@master
+      - name: Run Trivy scanner on frontend
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: civicpulse-frontend:ci
           format: "table"
-          exit-code: "0"
+          exit-code: "1"
           ignore-unfixed: true
           severity: "CRITICAL,HIGH"
 
-  # ── Docker Compose Smoke Test ────────────────────────
-  compose-smoke-test:
-    name: Docker Compose Integration Smoke Test
+  # ── Docker Compose Integration Smoke Test ────────────
+  compose-smoke:
+    name: Compose Integration Smoke Test
     runs-on: ubuntu-latest
-    needs: [docker-and-security]
+    needs: [trivy-scan]
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Docker Compose
+      - name: Create test .env
         run: |
-          docker compose up -d --build
-          sleep 15
+          cp .env.example .env
 
-      - name: Verify health endpoints
+      - name: Start Compose stack
         run: |
+          docker compose up -d --build postgres redis migrations backend frontend
+          sleep 20
+
+      - name: Smoke test API endpoints end-to-end
+        run: |
+          # 1. Probe checks
           curl --fail --retry 10 --retry-delay 3 http://localhost:8000/health
           curl --fail --retry 10 --retry-delay 3 http://localhost:8000/ready
-          curl --fail --retry 5 http://localhost:3000/
+
+          # 2. Intake submission (POST)
+          RESPONSE=$(curl --fail -s -X POST http://localhost:8000/api/complaints \
+            -H "Content-Type: application/json" \
+            -d '{"text": "Severe water main burst flooding street 12 since morning", "location": "Street 12, Sector F-8"}')
+          echo "Create response: $RESPONSE"
+
+          # 3. Fetch the newly created complaint by its server-generated ID
+          COMPLAINT_ID=$(printf '%s' "$RESPONSE" | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')
+          curl --fail --silent --show-error "http://localhost:8000/api/complaints/$COMPLAINT_ID" \
+            | python3 -c 'import json,sys; complaint=json.load(sys.stdin); assert complaint["text"] == "Severe water main burst flooding street 12 since morning"; assert complaint["category"] == "water"'
+
+          # 4. Verify read-through stats cache with real GET requests
+          curl --fail --silent --show-error -D "$RUNNER_TEMP/stats-miss.headers" -o /dev/null http://localhost:8000/api/stats
+          curl --fail --silent --show-error -D "$RUNNER_TEMP/stats-hit.headers" -o /dev/null http://localhost:8000/api/stats
+          grep -qi '^x-cache: MISS' "$RUNNER_TEMP/stats-miss.headers"
+          grep -qi '^x-cache: HIT' "$RUNNER_TEMP/stats-hit.headers"
+
+          # 5. Check frontend HTTP 200
+          curl --fail -s -o /dev/null -w "%{http_code}" http://localhost:3000/ | grep -q "200"
 
       - name: Tear down Compose
         if: always()

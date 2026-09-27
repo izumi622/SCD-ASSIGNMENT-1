@@ -1,7 +1,8 @@
 import pytest
 from pydantic import ValidationError
-from app.models.schemas import ComplaintCreate, ComplaintStatusUpdate
+
 from app.models.enums import Category, Priority, Status
+from app.models.schemas import ComplaintCreate, ComplaintStatusUpdate
 
 
 def test_complaint_create_validation():

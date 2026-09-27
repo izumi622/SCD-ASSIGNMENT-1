@@ -73,21 +73,21 @@ class ComplaintRepository:
         total_complaints = total_res.scalar_one()
 
         # Counts by category
-        cat_stmt = select(ComplaintDB.category, func.count(ComplaintDB.id)).group_by(
+        cat_stmt: Any = select(ComplaintDB.category, func.count(ComplaintDB.id)).group_by(
             ComplaintDB.category
         )
         cat_res = await self.session.execute(cat_stmt)
         by_category = {cat: count for cat, count in cat_res.all()}
 
         # Counts by priority
-        prio_stmt = select(ComplaintDB.priority, func.count(ComplaintDB.id)).group_by(
+        prio_stmt: Any = select(ComplaintDB.priority, func.count(ComplaintDB.id)).group_by(
             ComplaintDB.priority
         )
         prio_res = await self.session.execute(prio_stmt)
         by_priority = {prio: count for prio, count in prio_res.all()}
 
         # Counts by status
-        status_stmt = select(ComplaintDB.status, func.count(ComplaintDB.id)).group_by(
+        status_stmt: Any = select(ComplaintDB.status, func.count(ComplaintDB.id)).group_by(
             ComplaintDB.status
         )
         status_res = await self.session.execute(status_stmt)

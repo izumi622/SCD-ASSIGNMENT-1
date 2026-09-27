@@ -186,3 +186,30 @@ Based on `CivicPulse_Assignment_1.md` (CS4032 - Software Construction and Design
 - [x] `docs/AI-USAGE.md` documenting transparent AI tool usage.
 - [x] `docs/TRIAGE.md` detailing triage pipeline and resilience.
 - [x] `scripts/check_submission.py` automated submission lint tool passing with 0 errors and 0 warnings.
+
+---
+
+## 11. Verification Status & Remaining Student Deliverables
+
+### Automated & Tested in Workspace
+- [x] Backend Unit & Integration Tests: 36/36 pytest passing (80% coverage, exceeding 65% target).
+- [x] Frontend Component Tests: 14/14 Vitest tests passing across 6 suites.
+- [x] Frontend Production Build: Clean compile via `tsc && vite build`.
+- [x] Schema Contract Verification: TypeScript types in `types.ts` checked against backend FastAPI OpenAPI schema.
+- [x] Submission Linter: `python scripts/check_submission.py` passing with 0 errors and 0 warnings.
+- [x] Kubernetes Manifest Validation: Dev and prod overlays compile cleanly via `kubectl kustomize`.
+- [x] Docker Compose Configuration: Verified with `docker compose config` (IMAGE_TAG required, zero exposed DB/cache ports in prod).
+
+### Student Personal Action Items (Cannot Be Fabricated)
+- [ ] **GitHub Repository Setup**:
+  - Push `main` and `dev` branches to your personal/team GitHub repository.
+  - Enable Branch Protection on `main` (require PR, require CI checks, require review). Take screenshot and place in `docs/evidence/`.
+- [ ] **Pull Request & Review**:
+  - Open a PR from `dev` to `main`, have your partner submit a review comment, and take a screenshot.
+- [ ] **Live Kubernetes Smoke Test**:
+  - Enable Kubernetes in Docker Desktop or spin up a local Kind cluster (`kind create cluster`).
+  - Deploy manifests (`kubectl apply -k k8s/overlays/prod`) and capture `kubectl get pods -n civicpulse` output.
+- [ ] **Live Load Test Execution**:
+  - Run `k6 run load/k6-script.js` against the running stack and capture the HPA scaling terminal output (`kubectl get hpa -n civicpulse -w`).
+- [ ] **Demo Video**:
+  - Record a 3–5 minute video demonstrating complaint submission, AI triage, dashboard status transitions, and Prometheus metrics.

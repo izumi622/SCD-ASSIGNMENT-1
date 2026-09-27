@@ -120,42 +120,46 @@ civicpulse/
 | Simulated     | `simulated`       | Hash-based deterministic output (for testing)   |
 
 All providers implement the same `TriageProvider` interface with:
-- **Validation**: Structured JSON output parsing
-- **Timeout**: 30s configurable timeout
-- **Retry**: 3 attempts with exponential backoff
-- **Fallback**: Automatic cascade to `rules` → `simulated` on failure
-- **Caching**: 24h content-hash-based Redis cache
+- **Validation**: Strict Pydantic JSON output schema validation
+- **Timeout**: Hard 10s configurable timeout (`AI_TIMEOUT_SECONDS=10.0`)
+- **Retry**: Jittered retry on 429, 5xx, and timeouts; non-retryable 4xx errors fail immediately
+- **Fallback**: Automatic cascade to `rules` → `simulated` on provider failure
+- **Caching**: 24h content-hash-based Redis cache (`TRIAGE_CACHE_TTL_SECONDS=86400`)
 
 ## 🔧 API Endpoints
 
-| Method  | Path                              | Description              |
-| ------- | --------------------------------- | ------------------------ |
-| `POST`  | `/api/complaints`                 | Submit new complaint     |
-| `GET`   | `/api/complaints`                 | List (paginated, filter) |
-| `GET`   | `/api/complaints/{id}`            | Get single complaint     |
-| `PATCH` | `/api/complaints/{id}`            | Update status            |
-| `GET`   | `/api/stats`                      | Aggregate statistics     |
-| `GET`   | `/health`                         | Liveness probe           |
-| `GET`   | `/ready`                          | Readiness probe          |
-| `GET`   | `/metrics`                        | Prometheus metrics       |
+| Method  | Path                              | Description                              |
+| ------- | --------------------------------- | ---------------------------------------- |
+| `POST`  | `/api/complaints`                 | Submit new complaint (triggers triage)   |
+| `GET`   | `/api/complaints`                 | List complaints (category, priority, etc)|
+| `GET`   | `/api/complaints/{id}`            | Get single complaint by ID               |
+| `PATCH` | `/api/complaints/{id}/status`     | Update status (enforces state machine)   |
+| `GET`   | `/api/stats`                      | Aggregate statistics (cached in Redis)   |
+| `GET`   | `/api/meta/providers`             | Active provider and recent outcomes      |
+| `GET`   | `/health`                         | Liveness probe                           |
+| `GET`   | `/ready`                          | Readiness probe                          |
+| `GET`   | `/metrics`                        | Prometheus metrics (RED method)          |
 
 ## ☸️ Kubernetes Deployment
 
+Deploy using Kustomize overlays into the `civicpulse` namespace:
+
 ```bash
-kubectl apply -f k8s/namespace.yaml
-kubectl apply -f k8s/secrets.yaml
-kubectl apply -f k8s/configmap.yaml
-kubectl apply -f k8s/postgres.yaml
-kubectl apply -f k8s/redis.yaml
-kubectl apply -f k8s/migration-job.yaml
+# 1. Create namespace and configure cluster secrets (populate real values)
+kubectl apply -f k8s/base/namespace.yaml
+kubectl apply -f k8s/base/secrets.yaml
+
+# 2. Deploy using production overlay (or dev overlay)
+kubectl apply -k k8s/overlays/prod
+
+# 3. Wait for migration job completion and backend rollout
 kubectl wait --for=condition=complete job/migrations -n civicpulse --timeout=120s
-kubectl apply -f k8s/backend.yaml
-kubectl apply -f k8s/frontend.yaml
-kubectl apply -f k8s/ingress.yaml
-kubectl apply -f k8s/hpa.yaml
+kubectl rollout status deployment/backend -n civicpulse --timeout=180s
+kubectl rollout status deployment/frontend -n civicpulse --timeout=120s
 ```
 
 HPA scales backend 2–8 replicas (CPU 70%, memory 80%) and frontend 2–6 replicas (CPU 75%).
+Images are tagged by commit SHA (`IMAGE_TAG`) in production manifests — never `:latest`.
 
 ## 📚 Documentation
 

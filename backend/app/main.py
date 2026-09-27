@@ -41,10 +41,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGTERM, signal.SIGINT):
         try:
-            loop.add_signal_handler(
-                sig,
-                lambda s=sig: asyncio.create_task(handle_graceful_shutdown(s)),
-            )
+            loop.add_signal_handler(sig, schedule_shutdown, sig)
         except (NotImplementedError, AttributeError):
             # Windows does not support loop.add_signal_handler for SIGTERM
             pass
@@ -70,6 +67,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Dispose database connection pool
     await async_engine.dispose()
     logger.info("Database and Redis connections closed. Process terminating cleanly.")
+
+
+def schedule_shutdown(sig: signal.Signals) -> None:
+    asyncio.create_task(handle_graceful_shutdown(sig))
 
 
 async def handle_graceful_shutdown(sig: signal.Signals) -> None:
