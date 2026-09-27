@@ -61,7 +61,7 @@ class ComplaintRepository:
 
     async def update_status(self, complaint: ComplaintDB, new_status: str) -> ComplaintDB:
         """Updates the status of a complaint and commits."""
-        setattr(complaint, "status", new_status)
+        complaint.status = new_status
         await self.session.flush()
         await self.session.refresh(complaint)
         return complaint
