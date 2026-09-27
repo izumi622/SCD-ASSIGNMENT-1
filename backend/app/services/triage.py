@@ -73,7 +73,7 @@ class TriageService:
         # 1. Check Redis content-hash cache (24h TTL)
         cached_result = await self.cache.get_triage_cache(content_hash)
         if cached_result:
-            result = TriageResult.model_validate(cached_result)
+            cached_triage_result = TriageResult.model_validate(cached_result)
             provider_name = cached_result.get("triaged_by", self.provider.name)
             latency_ms = 0
             self.recent_outcomes.append(
@@ -84,7 +84,7 @@ class TriageService:
                     timestamp=datetime.now(timezone.utc),
                 )
             )
-            return result, provider_name, latency_ms
+            return cached_triage_result, provider_name, latency_ms
 
         start_time = time.perf_counter()
         active_provider_name = self.provider.name
