@@ -223,11 +223,16 @@ jobs:
             -d '{"text": "Severe water main burst flooding street 12 since morning", "location": "Street 12, Sector F-8"}')
           echo "Create response: $RESPONSE"
 
-          # 3. Read back list (GET)
-          curl --fail -s http://localhost:8000/api/complaints | grep -q "Street 12"
+          # 3. Fetch the newly created complaint by its server-generated ID
+          COMPLAINT_ID=$(printf '%s' "$RESPONSE" | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')
+          curl --fail --silent --show-error "http://localhost:8000/api/complaints/$COMPLAINT_ID" \
+            | python3 -c 'import json,sys; complaint=json.load(sys.stdin); assert complaint["text"] == "Severe water main burst flooding street 12 since morning"; assert complaint["category"] == "water"'
 
-          # 4. Check cached stats (GET)
-          curl --fail -s -I http://localhost:8000/api/stats | grep -i "X-Cache"
+          # 4. Verify read-through stats cache with real GET requests
+          curl --fail --silent --show-error -D "$RUNNER_TEMP/stats-miss.headers" -o /dev/null http://localhost:8000/api/stats
+          curl --fail --silent --show-error -D "$RUNNER_TEMP/stats-hit.headers" -o /dev/null http://localhost:8000/api/stats
+          grep -qi '^x-cache: MISS' "$RUNNER_TEMP/stats-miss.headers"
+          grep -qi '^x-cache: HIT' "$RUNNER_TEMP/stats-hit.headers"
 
           # 5. Check frontend HTTP 200
           curl --fail -s -o /dev/null -w "%{http_code}" http://localhost:3000/ | grep -q "200"
