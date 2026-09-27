@@ -53,9 +53,16 @@
   - Added `npm run check:types` to frontend scripts.
   - All 14 Vitest tests passing across 6 suites.
 
-### 4. Docker Compose Hardening
-- **Ollama Service**: Added `ollama` service with healthcheck and `ollama_models` named persistent volume.
-- **Migration Dependency**: Backend service configured with `depends_on.migrations.condition: service_completed_successfully` so the backend does not start serving until Alembic migrations and seed data complete.
+### 4. Docker Compose Hardening & Live Verification
+- **Ollama Storage Protected**: Configured `D:/OLLAMA:/root/.ollama` bind mount so that model downloads reside on `D:\OLLAMA` and never consume C: drive space.
+- **Migration & Package Resolution Fixed**: Added package `__init__.py` files across all backend modules and configured `sys.path` in `alembic/env.py` to ensure reliable module loading inside containers.
+- **Postgres Dialect Compatibility**: Explicitly configured `postgresql+psycopg2` driver in Alembic and compose configurations to resolve SQLAlchemy 2.0+ default dialect lookup.
+- **Live Stack Verified**:
+  - `docker compose up --build -d` runs cleanly with all core containers healthy.
+  - `migrations` container executes `alembic upgrade head && python -m app.seed` and exits with status 0, seeding 32 complaints.
+  - `backend` starts only after migrations complete and passes liveness/readiness probes.
+  - `frontend` serves on port 3000 (HTTP 200).
+  - Live API testing verified: `/health` (healthy), `/ready` (ready), `POST /api/complaints` (triaged in 7ms), `GET /api/stats` (verified `X-Cache: MISS` then `X-Cache: HIT`), and `PATCH /api/complaints/{id}/status` (proper 409 Conflict on invalid transition).
 - **Production Compose (`docker-compose.prod.yaml`)**:
   - Published ports removed for `postgres`, `redis`, and `ollama` (`ports: !override []`).
   - Build directives removed (`build: !reset null`).
