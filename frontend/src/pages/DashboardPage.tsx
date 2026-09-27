@@ -43,25 +43,6 @@ export default function DashboardPage() {
 
   const totalPages = data ? Math.ceil(data.total / data.page_size) : 1;
 
-  const handleStatusChange = useCallback(
-    async (id: string, newStatus: Status) => {
-      const result = await patch(id, newStatus);
-      if (result) {
-        addToast(`Status updated to ${STATUS_LABELS[newStatus]}`, "success");
-        reload();
-      } else {
-        // The usePatchStatus hook already captured the server error message —
-        // but since we're using toast-based feedback, re-fetch via the hook's
-        // error wasn't ideal. Instead, patch returns null on failure and the
-        // hook sets its own error. We show a generic fallback here; the actual
-        // server message (e.g. 409 Conflict) is surfaced by the hook's
-        // APIError parsing in the catch block below.
-        // NOTE: We handle this more precisely below by catching in the hook.
-      }
-    },
-    [patch, addToast, reload],
-  );
-
   /**
    * Wraps status change to surface server-side error messages (including 409)
    * directly in a toast notification.
@@ -80,15 +61,6 @@ export default function DashboardPage() {
     },
     [patch, addToast, reload],
   );
-
-  const formatDate = (iso: string) =>
-    new Date(iso).toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
 
   return (
     <div>
