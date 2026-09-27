@@ -75,6 +75,7 @@ jobs:
         working-directory: frontend
         run: |
           npm ci
+          npm run lint
           npx tsc --noEmit
           npm test
           npm run build
