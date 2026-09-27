@@ -51,4 +51,4 @@ services:
           cpus: "0.25"
           memory: 256M
     ports: !override
-      - "80:80"
+      - "80:8080"
