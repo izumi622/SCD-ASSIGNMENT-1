@@ -10,14 +10,14 @@ spec:
     kind: Deployment
     name: backend
   minReplicas: 2
-  maxReplicas: 8
+  maxReplicas: 10
   metrics:
     - type: Resource
       resource:
         name: cpu
         target:
           type: Utilization
-          averageUtilization: 70
+          averageUtilization: 60
     - type: Resource
       resource:
         name: memory
@@ -26,7 +26,7 @@ spec:
           averageUtilization: 80
   behavior:
     scaleUp:
-      stabilizationWindowSeconds: 60
+      stabilizationWindowSeconds: 0
       policies:
         - type: Pods
           value: 2
