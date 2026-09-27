@@ -10,8 +10,9 @@ from sqlalchemy import (
     String,
 )
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
-from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy.types import CHAR, TypeDecorator
+
 
 class Base(DeclarativeBase):
     pass
@@ -61,7 +62,7 @@ class ComplaintDB(Base):
 
     category = Column(String(50), nullable=False)
     priority = Column(String(20), nullable=False)
-    status = Column(String(20), nullable=False, default="open")
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="open")
 
     ai_summary = Column(String(140), nullable=True)
     triaged_by = Column(String(64), nullable=False)
