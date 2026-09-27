@@ -1,0 +1,31 @@
+# ── Alembic Migration Job ────────────────────────────────
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: migrations
+  namespace: civicpulse
+  labels:
+    app.kubernetes.io/name: migrations
+    app.kubernetes.io/part-of: civicpulse
+spec:
+  backoffLimit: 3
+  ttlSecondsAfterFinished: 300
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: migrations
+          image: ghcr.io/civicpulse/backend:latest
+          command: ["sh", "-c", "alembic upgrade head && python -m app.seed"]
+          envFrom:
+            - secretRef:
+                name: civicpulse-secrets
+            - configMapRef:
+                name: civicpulse-config
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 300m
+              memory: 256Mi

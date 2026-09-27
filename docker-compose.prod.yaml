@@ -1,0 +1,36 @@
+# docker-compose.prod.yaml — Production overrides
+#
+# Usage:
+#   docker compose -f docker-compose.yaml -f docker-compose.prod.yaml up -d
+#
+# Uses pre-built images from a container registry.
+
+services:
+  backend:
+    image: ${REGISTRY:-ghcr.io/civicpulse}/backend:${IMAGE_TAG:-latest}
+    build: !reset null
+    restart: always
+    deploy:
+      replicas: 2
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 512M
+    environment:
+      ENVIRONMENT: production
+      LOG_LEVEL: WARNING
+
+  frontend:
+    image: ${REGISTRY:-ghcr.io/civicpulse}/frontend:${IMAGE_TAG:-latest}
+    build: !reset null
+    restart: always
+    deploy:
+      replicas: 2
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 256M
+
+  migrations:
+    image: ${REGISTRY:-ghcr.io/civicpulse}/backend:${IMAGE_TAG:-latest}
+    build: !reset null

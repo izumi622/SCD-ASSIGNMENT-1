@@ -1,0 +1,119 @@
+# docker-compose.yaml — CivicPulse Development Stack
+#
+# Usage:
+#   cp .env.example .env          # edit to taste
+#   docker compose up --build -d
+#
+# Ports:
+#   Frontend   → http://localhost:3000
+#   Backend    → http://localhost:8000
+
+services:
+  # ── PostgreSQL 16 ──────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-civicpulse}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-civicpulse_secret_pw}
+      POSTGRES_DB: ${POSTGRES_DB:-civicpulse_db}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-civicpulse}"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # ── Redis 7 (AOF enabled) ──────────────────────────────
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --appendonly yes --appendfsync everysec
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # ── Backend (FastAPI) ──────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-civicpulse}:${POSTGRES_PASSWORD:-civicpulse_secret_pw}@postgres:5432/${POSTGRES_DB:-civicpulse_db}
+      SYNC_DATABASE_URL: postgresql://${POSTGRES_USER:-civicpulse}:${POSTGRES_PASSWORD:-civicpulse_secret_pw}@postgres:5432/${POSTGRES_DB:-civicpulse_db}
+      REDIS_URL: redis://redis:6379/0
+      TRIAGE_PROVIDER: ${TRIAGE_PROVIDER:-simulated}
+    ports:
+      - "8000:8000"
+    networks:
+      - edge
+      - internal
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+
+  # ── Alembic Migration Runner (one-shot) ────────────────
+  migrations:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file: .env
+    environment:
+      SYNC_DATABASE_URL: postgresql://${POSTGRES_USER:-civicpulse}:${POSTGRES_PASSWORD:-civicpulse_secret_pw}@postgres:5432/${POSTGRES_DB:-civicpulse_db}
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-civicpulse}:${POSTGRES_PASSWORD:-civicpulse_secret_pw}@postgres:5432/${POSTGRES_DB:-civicpulse_db}
+    command: >
+      sh -c "alembic upgrade head && python -m app.seed"
+    networks:
+      - internal
+    restart: "no"
+
+  # ── Frontend (Nginx serving React build) ───────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "3000:80"
+    networks:
+      - edge
+
+volumes:
+  pgdata:
+  redisdata:
+
+networks:
+  edge:
+    driver: bridge
+  internal:
+    driver: bridge
+    internal: true
