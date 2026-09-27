@@ -101,7 +101,8 @@ services:
 
   # ── Ollama (Local AI Inference) ─────────────────────────
   ollama:
-    image: ollama/ollama:latest
+    profiles: [offline-ai]
+    image: ollama/ollama:0.12.0
     restart: unless-stopped
     ports:
       - "11434:11434"
