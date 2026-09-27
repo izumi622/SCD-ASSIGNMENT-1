@@ -20,7 +20,7 @@ services:
 
   # ── Backend — pre-built image, no bind mounts, no host ports
   backend:
-    image: ${REGISTRY:-ghcr.io/civicpulse}/backend:${IMAGE_TAG:?Set IMAGE_TAG to a commit SHA}
+    image: ${REGISTRY:-ghcr.io/izumi622/scd-assignment-1}/backend:${IMAGE_TAG:?Set IMAGE_TAG to a commit SHA}
     build: !reset null
     volumes: !override []
     command: !reset null
@@ -38,12 +38,12 @@ services:
 
   # ── Migrations — same pre-built backend image ──────────
   migrations:
-    image: ${REGISTRY:-ghcr.io/civicpulse}/backend:${IMAGE_TAG:?Set IMAGE_TAG to a commit SHA}
+    image: ${REGISTRY:-ghcr.io/izumi622/scd-assignment-1}/backend:${IMAGE_TAG:?Set IMAGE_TAG to a commit SHA}
     build: !reset null
 
   # ── Frontend — pre-built image, published only on port 80
   frontend:
-    image: ${REGISTRY:-ghcr.io/civicpulse}/frontend:${IMAGE_TAG:?Set IMAGE_TAG to a commit SHA}
+    image: ${REGISTRY:-ghcr.io/izumi622/scd-assignment-1}/frontend:${IMAGE_TAG:?Set IMAGE_TAG to a commit SHA}
     build: !reset null
     restart: always
     deploy:
