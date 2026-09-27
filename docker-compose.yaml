@@ -137,7 +137,9 @@ services:
     ports:
       - "11434:11434"
     volumes:
-      - ${OLLAMA_VOLUME:-ollama_models}:/root/.ollama
+      - type: bind
+        source: ${OLLAMA_VOLUME:-D:/OLLAMA}
+        target: /root/.ollama
     networks:
       - internal
     healthcheck:
