@@ -1,5 +1,12 @@
 import asyncio
+import sys
 from logging.config import fileConfig
+from pathlib import Path
+
+# Ensure the project root (/app in Docker) is on sys.path so that
+# `from app.core.config import ...` resolves correctly when Alembic
+# is invoked as a CLI tool inside a container.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from alembic import context
 from sqlalchemy import pool
@@ -25,6 +32,8 @@ settings = get_settings()
 
 # Use configured database URL
 db_url = settings.SYNC_DATABASE_URL or settings.DATABASE_URL
+if db_url.startswith("postgresql://"):
+    db_url = db_url.replace("postgresql://", "postgresql+psycopg2://", 1)
 config.set_main_option("sqlalchemy.url", db_url)
 
 

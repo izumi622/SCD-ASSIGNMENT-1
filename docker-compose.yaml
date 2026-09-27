@@ -57,10 +57,14 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-    env_file: .env
+      migrations:
+        condition: service_completed_successfully
+    env_file:
+      - path: .env
+        required: false
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-civicpulse}:${POSTGRES_PASSWORD:-civicpulse_secret_pw}@postgres:5432/${POSTGRES_DB:-civicpulse_db}
-      SYNC_DATABASE_URL: postgresql://${POSTGRES_USER:-civicpulse}:${POSTGRES_PASSWORD:-civicpulse_secret_pw}@postgres:5432/${POSTGRES_DB:-civicpulse_db}
+      SYNC_DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-civicpulse}:${POSTGRES_PASSWORD:-civicpulse_secret_pw}@postgres:5432/${POSTGRES_DB:-civicpulse_db}
       REDIS_URL: redis://redis:6379/0
       TRIAGE_PROVIDER: ${TRIAGE_PROVIDER:-simulated}
     ports:
@@ -83,15 +87,34 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    env_file: .env
+    env_file:
+      - path: .env
+        required: false
     environment:
-      SYNC_DATABASE_URL: postgresql://${POSTGRES_USER:-civicpulse}:${POSTGRES_PASSWORD:-civicpulse_secret_pw}@postgres:5432/${POSTGRES_DB:-civicpulse_db}
+      SYNC_DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-civicpulse}:${POSTGRES_PASSWORD:-civicpulse_secret_pw}@postgres:5432/${POSTGRES_DB:-civicpulse_db}
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-civicpulse}:${POSTGRES_PASSWORD:-civicpulse_secret_pw}@postgres:5432/${POSTGRES_DB:-civicpulse_db}
     command: >
       sh -c "alembic upgrade head && python -m app.seed"
     networks:
       - internal
     restart: "no"
+
+  # ── Ollama (Local AI Inference) ─────────────────────────
+  ollama:
+    image: ollama/ollama:latest
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - D:/OLLAMA:/root/.ollama
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 10s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
 
   # ── Frontend (Nginx serving React build) ───────────────
   frontend:

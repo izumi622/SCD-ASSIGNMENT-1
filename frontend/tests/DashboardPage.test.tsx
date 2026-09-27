@@ -1,22 +1,29 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import DashboardPage from "../src/pages/DashboardPage";
-import { api } from "../src/api/client";
+import { api, APIError } from "../src/api/client";
 import type { PaginatedResponse, Complaint } from "../src/api/types";
 
-vi.mock("../src/api/client", () => ({
-  api: {
-    listComplaints: vi.fn(),
-    updateComplaintStatus: vi.fn(),
-  },
-  APIError: class extends Error {
+vi.mock("../src/api/client", () => {
+  class MockAPIError extends Error {
     status: number;
-    constructor(msg: string, status: number) {
-      super(msg);
+    data: any;
+    constructor(message: string, status: number, data?: any) {
+      super(message);
+      this.name = "APIError";
       this.status = status;
+      this.data = data;
     }
-  },
-}));
+  }
+
+  return {
+    api: {
+      listComplaints: vi.fn(),
+      updateComplaintStatus: vi.fn(),
+    },
+    APIError: MockAPIError,
+  };
+});
 
 describe("DashboardPage", () => {
   const mockComplaints: PaginatedResponse<Complaint> = {
@@ -46,7 +53,7 @@ describe("DashboardPage", () => {
     vi.mocked(api.listComplaints).mockResolvedValue(mockComplaints);
   });
 
-  it("renders complaint list and filters", async () => {
+  it("renders complaint list and all filters including category", async () => {
     render(<DashboardPage />);
 
     await waitFor(() => {
@@ -56,9 +63,31 @@ describe("DashboardPage", () => {
 
     expect(screen.getByText("All Statuses")).toBeInTheDocument();
     expect(screen.getByText("All Priorities")).toBeInTheDocument();
+    expect(screen.getByText("All Categories")).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "Roads" })).toBeInTheDocument();
   });
 
-  it("allows status transitions according to state machine", async () => {
+  it("filters complaints when category dropdown changes", async () => {
+    render(<DashboardPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Main road pothole near school")).toBeInTheDocument();
+    });
+
+    // Find the category dropdown (the select containing 'All Categories')
+    const categorySelect = screen.getByDisplayValue("All Categories");
+    fireEvent.change(categorySelect, { target: { value: "roads" } });
+
+    await waitFor(() => {
+      expect(api.listComplaints).toHaveBeenCalledWith(
+        expect.objectContaining({
+          category: "roads",
+        }),
+      );
+    });
+  });
+
+  it("allows selecting a new status from the status dropdown", async () => {
     vi.mocked(api.updateComplaintStatus).mockResolvedValueOnce({
       ...mockComplaints.items[0],
       status: "in_progress",
@@ -70,14 +99,35 @@ describe("DashboardPage", () => {
       expect(screen.getByText("Main road pothole near school")).toBeInTheDocument();
     });
 
-    // In open status, allowed transitions are "in_progress" and "rejected"
-    const inProgressBtn = screen.getByRole("button", { name: /in progress/i });
-    expect(inProgressBtn).toBeInTheDocument();
+    // The status transition select dropdown
+    const statusSelect = screen.getByDisplayValue("Change status…");
+    expect(statusSelect).toBeInTheDocument();
 
-    fireEvent.click(inProgressBtn);
+    fireEvent.change(statusSelect, { target: { value: "in_progress" } });
 
     await waitFor(() => {
       expect(api.updateComplaintStatus).toHaveBeenCalledWith("c-101", "in_progress");
+    });
+  });
+
+  it("displays the server's exact 409 error message when transition is rejected", async () => {
+    const server409Message = "Invalid transition from open to resolved";
+    vi.mocked(api.updateComplaintStatus).mockRejectedValueOnce(
+      new APIError(server409Message, 409, { detail: server409Message }),
+    );
+
+    render(<DashboardPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Main road pothole near school")).toBeInTheDocument();
+    });
+
+    const statusSelect = screen.getByDisplayValue("Change status…");
+    fireEvent.change(statusSelect, { target: { value: "resolved" } });
+
+    await waitFor(() => {
+      // The toast must display the exact message returned by the server
+      expect(screen.getByText(server409Message)).toBeInTheDocument();
     });
   });
 });

@@ -1,4 +1,4 @@
-# ── Release Pipeline — Tag-based immutable production release ──
+# ── Release Pipeline — Tag-based release with semver images & notes ──
 name: Release
 
 on:
@@ -16,9 +16,42 @@ env:
   FRONTEND_IMAGE: ghcr.io/${{ github.repository }}/frontend
 
 jobs:
-  release-build:
+  # ── Gating: Ensure tests pass before tagging release artifacts ─────
+  release-test:
+    name: Release Test Gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run backend unit tests
+        working-directory: backend
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-asyncio pytest-cov httpx
+          pytest tests/ -v
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Run frontend tests
+        working-directory: frontend
+        run: |
+          npm ci
+          npm test
+
+  # ── Build & Publish Release ───────────────────────────
+  release-publish:
     name: Build & Release Tagged Images
     runs-on: ubuntu-latest
+    needs: [release-test]
     steps:
       - uses: actions/checkout@v4
 
@@ -41,9 +74,7 @@ jobs:
         with:
           context: ./backend
           push: true
-          tags: |
-            ${{ env.BACKEND_IMAGE }}:${{ steps.meta.outputs.tag }}
-            ${{ env.BACKEND_IMAGE }}:latest
+          tags: ${{ env.BACKEND_IMAGE }}:${{ steps.meta.outputs.tag }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -52,9 +83,7 @@ jobs:
         with:
           context: ./frontend
           push: true
-          tags: |
-            ${{ env.FRONTEND_IMAGE }}:${{ steps.meta.outputs.tag }}
-            ${{ env.FRONTEND_IMAGE }}:latest
+          tags: ${{ env.FRONTEND_IMAGE }}:${{ steps.meta.outputs.tag }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 

@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "check:types": "python ../scripts/check_openapi_schema.py && tsc --noEmit"
   },
   "dependencies": {
     "react": "^18.3.1",
