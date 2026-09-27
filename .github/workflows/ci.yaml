@@ -32,13 +32,14 @@ jobs:
         working-directory: backend
         run: |
           pip install --upgrade pip
-          pip install ruff mypy
+          pip install -r requirements.txt ruff mypy
 
       - name: Backend Ruff check & format
         working-directory: backend
         run: |
           ruff check .
           ruff format --check .
+          mypy app/
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -158,9 +159,11 @@ jobs:
           curl -sL https://github.com/yannh/kubeconform/releases/latest/download/kubeconform-linux-amd64.tar.gz | tar -xz
           sudo mv kubeconform /usr/local/bin/
 
-      - name: Validate Kubernetes Manifests
-        run: |
-          kubeconform -summary -strict -ignore-missing-schemas k8s/*.yaml
+      - name: Install kubectl for Kustomize
+        uses: azure/setup-kubectl@v4
+
+      - name: Validate rendered production manifests
+        run: kubectl kustomize k8s/overlays/prod | kubeconform -summary -strict -ignore-missing-schemas -
 
   # ── Security Scan (Trivy) ────────────────────────────
   trivy-scan:
