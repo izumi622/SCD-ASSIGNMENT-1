@@ -344,10 +344,7 @@ async def _seed_with_session(session: AsyncSession) -> int:
         seed_uuid = uuid.uuid5(uuid.NAMESPACE_DNS, f"{item['location']}:{item['text']}")
         stmt = select(ComplaintDB).where(
             (ComplaintDB.id == seed_uuid)
-            | (
-                (ComplaintDB.text == item["text"])
-                & (ComplaintDB.location == item["location"])
-            )
+            | ((ComplaintDB.text == item["text"]) & (ComplaintDB.location == item["location"]))
         )
         result = await session.execute(stmt)
         existing = result.scalars().first()
@@ -374,7 +371,9 @@ async def _seed_with_session(session: AsyncSession) -> int:
         await session.commit()
         print(f"Successfully inserted {inserted_count} new seed complaint records.")
     else:
-        print("Database already contains all seed records. 0 rows inserted (idempotency preserved).")
+        print(
+            "Database already contains all seed records. 0 rows inserted (idempotency preserved)."
+        )
 
     return inserted_count
 

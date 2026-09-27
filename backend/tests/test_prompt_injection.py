@@ -1,4 +1,5 @@
 import pytest
+
 from app.providers.triage.simulated import SimulatedTriage
 from app.services.triage import TriageService
 

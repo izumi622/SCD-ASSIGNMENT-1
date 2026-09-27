@@ -8,11 +8,11 @@ from pathlib import Path
 # is invoked as a CLI tool inside a container.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from alembic import context
 from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
+from alembic import context
 from app.core.config import get_settings
 from app.models.db import Base
 
@@ -80,6 +80,7 @@ def run_migrations_online() -> None:
         asyncio.run(run_async_migrations())
     else:
         from sqlalchemy import create_engine
+
         connectable = create_engine(db_url, poolclass=pool.NullPool)
         with connectable.connect() as connection:
             do_run_migrations(connection)

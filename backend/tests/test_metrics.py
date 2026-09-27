@@ -1,8 +1,9 @@
 import pytest
+
 from app.providers.metrics import (
     HTTP_REQUESTS_TOTAL,
-    TRIAGE_FALLBACK_TOTAL,
     TRIAGE_DURATION_SECONDS,
+    TRIAGE_FALLBACK_TOTAL,
 )
 
 

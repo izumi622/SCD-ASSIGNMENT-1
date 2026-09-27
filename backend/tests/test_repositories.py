@@ -1,4 +1,5 @@
 import pytest
+
 from app.models.db import ComplaintDB
 from app.models.enums import Category, Priority, Status
 from app.repositories.complaint import ComplaintRepository
@@ -30,7 +31,9 @@ async def test_repository_crud(db_session):
     assert fetched.category == Category.electricity.value
 
     # List & filter
-    items, total = await repo.list_complaints(category=Category.electricity.value, page=1, page_size=10)
+    items, total = await repo.list_complaints(
+        category=Category.electricity.value, page=1, page_size=10
+    )
     assert total >= 1
     assert any(i.id == created.id for i in items)
 
