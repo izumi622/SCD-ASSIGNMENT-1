@@ -135,7 +135,7 @@ class RuleBasedTriage:
                 scores[category] = score
 
         if scores:
-            return max(scores, key=scores.get)
+            return max(scores, key=lambda category: scores[category])
         return Category.other
 
     def _determine_priority(self, text_lower: str) -> Priority:
