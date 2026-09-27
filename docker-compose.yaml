@@ -88,8 +88,10 @@ services:
     ports:
       - "8000:8000"
     networks:
-      - edge
-      - internal
+      edge:
+        aliases:
+          - backend-svc
+      internal:
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 10s
