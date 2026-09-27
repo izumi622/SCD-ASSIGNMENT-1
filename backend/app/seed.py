@@ -14,7 +14,7 @@ from app.models.enums import Category, Priority, Status
 logger = logging.getLogger("civicpulse.seed")
 
 # >= 30 realistic complaints in Urdu-influenced English across categories
-SEED_COMPLAINTS = [
+SEED_COMPLAINTS: list[dict[str, str | None]] = [
     {
         "text": "Main water supply pipe burst near Street 12 since fajr, paani entering ground floors and basements. Urgent repair required!",
         "location": "Sector G-9/2, Street 12, Islamabad",
