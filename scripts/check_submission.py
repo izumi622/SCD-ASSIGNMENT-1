@@ -71,6 +71,8 @@ REQUIRED_FILES = [
     # CI/CD
     ".github/workflows/ci.yaml",
     ".github/workflows/cd.yaml",
+    # Load Testing
+    "load/k6-script.js",
 ]
 
 REQUIRED_DIRS = [
