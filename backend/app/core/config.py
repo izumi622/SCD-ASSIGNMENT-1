@@ -34,7 +34,7 @@ class Settings(BaseSettings):
     # AI Triage
     TRIAGE_PROVIDER: str = "simulated"  # llm, ollama, rules, simulated
     GROQ_API_KEY: Optional[str] = None
-    GROQ_MODEL: str = "llama-3.1-8b-instant"
+    GROQ_MODEL: str = "openai/gpt-oss-20b"
     OLLAMA_BASE_URL: str = "http://ollama:11434"
     OLLAMA_MODEL: str = "llama3.2:1b"
 
