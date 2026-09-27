@@ -19,6 +19,11 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-civicpulse_db}
     ports:
       - "5432:5432"
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 512M
     volumes:
       - pgdata:/var/lib/postgresql/data
     networks:
@@ -36,6 +41,11 @@ services:
     command: redis-server --appendonly yes --appendfsync everysec
     ports:
       - "6379:6379"
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 128M
     volumes:
       - redisdata:/data
     networks:
@@ -67,6 +77,14 @@ services:
       SYNC_DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-civicpulse}:${POSTGRES_PASSWORD:-civicpulse_secret_pw}@postgres:5432/${POSTGRES_DB:-civicpulse_db}
       REDIS_URL: redis://redis:6379/0
       TRIAGE_PROVIDER: ${TRIAGE_PROVIDER:-simulated}
+    volumes:
+      - ./backend/app:/app/app
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 512M
     ports:
       - "8000:8000"
     networks:
@@ -98,11 +116,21 @@ services:
     networks:
       - internal
     restart: "no"
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 512M
 
   # ── Ollama (Local AI Inference) ─────────────────────────
   ollama:
     profiles: [offline-ai]
     image: ollama/ollama:0.12.0
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 3G
     restart: unless-stopped
     ports:
       - "11434:11434"
@@ -126,6 +154,11 @@ services:
     depends_on:
       backend:
         condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 256M
     ports:
       - "3000:8080"
     networks:
