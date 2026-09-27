@@ -132,6 +132,11 @@ class TriageService:
                 result = self.fallback_rules.triage(text, location)
                 break
 
+        if result is None:
+            is_fallback = True
+            triaged_by = "rules:fallback"
+            result = self.fallback_rules.triage(text, location)
+
         end_time = time.perf_counter()
         latency_ms = int((end_time - start_time) * 1000)
 
