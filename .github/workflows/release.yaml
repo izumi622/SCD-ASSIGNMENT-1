@@ -63,6 +63,7 @@ jobs:
           pip install --upgrade pip
           pip install -r requirements.txt
           pip install pytest pytest-asyncio pytest-cov httpx
+          alembic upgrade head
           pytest tests/ -v
 
       - name: Set up Node.js
