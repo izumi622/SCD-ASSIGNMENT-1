@@ -106,7 +106,7 @@ services:
     ports:
       - "11434:11434"
     volumes:
-      - D:/OLLAMA:/root/.ollama
+      - ${OLLAMA_VOLUME:-ollama_models}:/root/.ollama
     networks:
       - internal
     healthcheck:
@@ -133,6 +133,7 @@ services:
 volumes:
   pgdata:
   redisdata:
+  ollama_models:
 
 networks:
   edge:

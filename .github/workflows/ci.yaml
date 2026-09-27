@@ -208,7 +208,7 @@ jobs:
 
       - name: Start Compose stack
         run: |
-          docker compose up -d --build
+          docker compose up -d --build postgres redis migrations backend frontend
           sleep 20
 
       - name: Smoke test API endpoints end-to-end
