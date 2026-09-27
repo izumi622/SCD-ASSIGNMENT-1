@@ -251,8 +251,8 @@ jobs:
           curl --fail --silent --show-error --retry 20 --retry-delay 2 \
             --retry-connrefused -H 'Host: civicpulse.local' \
             http://127.0.0.1:18080/ready
-          curl --fail --silent --show-error -o /dev/null \
-            -H 'Host: civicpulse.local' http://127.0.0.1:18080/
+          curl --fail --silent --show-error --retry 20 --retry-delay 2 \
+            -o /dev/null -H 'Host: civicpulse.local' http://127.0.0.1:18080/
           response=$(curl --fail --silent --show-error -X POST \
             -H 'Host: civicpulse.local' -H 'Content-Type: application/json' \
             --data '{"text":"Water main burst flooding houses since morning","location":"Street 12, Islamabad"}' \
