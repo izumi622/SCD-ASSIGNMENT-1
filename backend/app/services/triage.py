@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from typing import Deque, List, Tuple
 
 import httpx
+from pydantic import ValidationError
 
 from app.core.config import get_settings
 from app.models.schemas import TriageOutcome
@@ -66,18 +67,22 @@ class TriageService:
         # 1. Check Redis content-hash cache (24h TTL)
         cached_result = await self.cache.get_triage_cache(content_hash)
         if cached_result:
-            cached_triage_result = TriageResult.model_validate(cached_result)
-            provider_name = cached_result.get("triaged_by", self.provider.name)
-            latency_ms = 0
-            self.recent_outcomes.append(
-                TriageOutcome(
-                    provider=f"{provider_name}:cache",
-                    latency_ms=0,
-                    fallback=False,
-                    timestamp=datetime.now(timezone.utc),
+            try:
+                cached_triage_result = TriageResult.model_validate(cached_result)
+            except ValidationError:
+                # Old or invalid cache entries are misses, never user-facing failures.
+                logger.warning("Ignoring invalid triage cache entry")
+            else:
+                provider_name = cached_result.get("triaged_by", self.provider.name)
+                self.recent_outcomes.append(
+                    TriageOutcome(
+                        provider=f"{provider_name}:cache",
+                        latency_ms=0,
+                        fallback=False,
+                        timestamp=datetime.now(timezone.utc),
+                    )
                 )
-            )
-            return cached_triage_result, provider_name, latency_ms
+                return cached_triage_result, provider_name, 0
 
         start_time = time.perf_counter()
         active_provider_name = self.provider.name
