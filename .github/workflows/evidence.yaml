@@ -1,0 +1,141 @@
+name: Assignment Evidence
+on:
+  push:
+    branches: [feat/kubernetes-evidence]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: assignment-evidence-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  test:
+    name: Full Test Suite Gating
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: test_user
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_DB: test_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U test_user"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql+asyncpg://test_user:test_password@localhost:5432/test_db
+      SYNC_DATABASE_URL: postgresql://test_user:test_password@localhost:5432/test_db
+      REDIS_URL: redis://localhost:6379/0
+      TRIAGE_PROVIDER: simulated
+      ENVIRONMENT: testing
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install backend dependencies & test
+        working-directory: backend
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-asyncio pytest-cov httpx
+          alembic upgrade head
+          pytest tests/ -v --cov=app --cov-fail-under=65
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install frontend dependencies & test
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run lint
+          npx tsc --noEmit
+          npm test
+          npm run build
+
+  evidence:
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install report dependencies
+        run: pip install matplotlib==3.10.1
+      - uses: helm/kind-action@v1.14.0
+        with:
+          cluster_name: civicpulse-evidence
+          node_image: kindest/node:v1.35.1
+      - name: Build and load the tested commit
+        run: |
+          docker build -t "civicpulse-backend:$GITHUB_SHA" backend
+          docker build -t "civicpulse-frontend:$GITHUB_SHA" frontend
+          kind load docker-image "civicpulse-backend:$GITHUB_SHA" "civicpulse-frontend:$GITHUB_SHA" --name civicpulse-evidence
+      - name: Install metrics and recommendation-only VPA
+        run: |
+          kubectl --context kind-civicpulse-evidence apply -f https://github.com/kubernetes-sigs/metrics-server/releases/download/v0.8.1/components.yaml
+          kubectl --context kind-civicpulse-evidence patch deployment metrics-server -n kube-system --type=json             -p '[{"op":"add","path":"/spec/template/spec/containers/0/args/-","value":"--kubelet-insecure-tls"}]'
+          kubectl --context kind-civicpulse-evidence rollout status deployment/metrics-server -n kube-system --timeout=180s
+          git clone --quiet --depth 1 --branch vertical-pod-autoscaler-1.7.1 https://github.com/kubernetes/autoscaler.git /tmp/evidence-autoscaler
+          # vpa-up.sh uses the current context, which must be this disposable cluster.
+          test "$(kubectl config current-context)" = kind-civicpulse-evidence
+          (cd /tmp/evidence-autoscaler/vertical-pod-autoscaler && ./hack/vpa-up.sh)
+          kubectl --context kind-civicpulse-evidence rollout status deployment/vpa-recommender -n kube-system --timeout=180s
+      - name: Deploy and migrate
+        run: python scripts/evidence/deploy.py
+      - name: Baseline workload and scaling samples
+        run: python scripts/evidence/measure.py
+      - name: Apply measured requests and repeat the workload
+        run: python scripts/evidence/tune.py
+      - name: Exercise and verify rollback
+        run: python scripts/evidence/rollback.py
+      - name: Save cluster diagnostics
+        if: always()
+        run: |
+          mkdir -p evidence-output
+          kubectl --context kind-civicpulse-evidence get pods,hpa,vpa -n civicpulse -o wide > evidence-output/cluster-status.txt 2>&1 || true
+          kubectl --context kind-civicpulse-evidence get events -n civicpulse --sort-by=.lastTimestamp > evidence-output/events.txt 2>&1 || true
+      - name: Generate measured report
+        if: always()
+        run: |
+          python scripts/evidence/report.py
+          cat evidence-output/REPORT.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Check evidence completeness
+        if: always()
+        run: |
+          python - <<'PYCODE'
+          import json
+          from pathlib import Path
+          findings = json.loads(Path("evidence-output/findings.json").read_text())
+          missing = [key for key, value in findings.items() if not value]
+          if missing:
+              raise SystemExit("Evidence not demonstrated: " + ", ".join(missing))
+          PYCODE
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: assignment-evidence-${{ github.sha }}
+          path: evidence-output/
+          if-no-files-found: error
+          retention-days: 14
