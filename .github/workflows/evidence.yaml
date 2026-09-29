@@ -104,6 +104,10 @@ jobs:
           kubectl --context kind-civicpulse-evidence rollout status deployment/vpa-recommender -n kube-system --timeout=180s
       - name: Deploy and migrate
         run: python scripts/evidence/deploy.py
+      - name: Reserve capacity for VPA rollout
+        run: |
+          kubectl --context kind-civicpulse-evidence patch hpa backend-hpa -n civicpulse --type=merge -p '{"spec":{"maxReplicas":4}}'
+          kubectl --context kind-civicpulse-evidence patch hpa frontend-hpa -n civicpulse --type=merge -p '{"spec":{"maxReplicas":3}}'
       - name: Baseline workload and scaling samples
         run: python scripts/evidence/measure.py
       - name: Apply measured requests and repeat the workload
