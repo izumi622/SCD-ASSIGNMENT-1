@@ -93,6 +93,7 @@ class TriageService:
                     asyncio.to_thread(self.provider.triage, text, location),
                     timeout=self.settings.AI_TIMEOUT_SECONDS,
                 )
+                result = TriageResult.model_validate(result)
                 break
             except Exception as exc:
                 if attempt < self.settings.AI_MAX_RETRIES and is_retryable_exception(exc):
