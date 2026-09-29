@@ -1,0 +1,7 @@
+﻿NAME                        READY   STATUS    RESTARTS   AGE     IP            NODE                           NOMINATED NODE   READINESS GATES
+backend-6b4cc8c749-h82ft    1/1     Running   0          8m56s   10.244.0.11   civicpulse-lab-control-plane   <none>           <none>
+backend-6b4cc8c749-pjsm2    1/1     Running   0          8m56s   10.244.0.10   civicpulse-lab-control-plane   <none>           <none>
+frontend-55998c5675-bm749   1/1     Running   0          8m38s   10.244.0.13   civicpulse-lab-control-plane   <none>           <none>
+frontend-55998c5675-szcfm   1/1     Running   0          8m38s   10.244.0.12   civicpulse-lab-control-plane   <none>           <none>
+postgres-0                  1/1     Running   0          13m     10.244.0.8    civicpulse-lab-control-plane   <none>           <none>
+redis-556f5cdc9f-hpcnl      1/1     Running   0          13m     10.244.0.7    civicpulse-lab-control-plane   <none>           <none>
