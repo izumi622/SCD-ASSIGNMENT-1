@@ -121,13 +121,18 @@ class CacheProvider:
         if r:
             try:
                 cached_val = await r.get(cache_key)
-                if cached_val:
+                payload = json.loads(cached_val) if cached_val else None
+                if payload is not None:
                     self._triage_hits += 1
-                    await r.incr("civicpulse:triage_stats:hits")
-                    return json.loads(cached_val)
-                self._triage_misses += 1
-                await r.incr("civicpulse:triage_stats:misses")
-                return None
+                    metric = "hits"
+                else:
+                    self._triage_misses += 1
+                    metric = "misses"
+                try:
+                    await r.incr(f"civicpulse:triage_stats:{metric}")
+                except Exception:
+                    logger.warning("Redis triage metric update failed")
+                return payload
             except Exception as e:
                 logger.warning(f"Redis get_triage_cache error: {e}")
 
