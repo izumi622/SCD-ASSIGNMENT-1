@@ -17,25 +17,17 @@ from app.providers.metrics import TRIAGE_DURATION_SECONDS, TRIAGE_FALLBACK_TOTAL
 from app.providers.triage.base import TriageProvider, TriageResult
 from app.providers.triage.factory import get_triage_provider
 from app.providers.triage.rules import RuleBasedTriage
+from app.providers.triage.simulated import SimulatedRateLimitError
 
 logger = logging.getLogger(__name__)
 
 
 def is_retryable_exception(exc: Exception) -> bool:
     """Retry once, with jitter — on timeout, 429 and 5xx only. Never retry a 400."""
-    if isinstance(exc, (TimeoutError, asyncio.TimeoutError)):
+    if isinstance(exc, (TimeoutError, httpx.TimeoutException, SimulatedRateLimitError)):
         return True
     if isinstance(exc, httpx.HTTPStatusError):
-        code = exc.response.status_code
-        if code == 429 or 500 <= code <= 599:
-            return True
-        return False
-    if isinstance(exc, httpx.RequestError):
-        return True
-    # For custom simulated exceptions
-    exc_name = exc.__class__.__name__
-    if "Timeout" in exc_name or "RateLimit" in exc_name or "500" in str(exc) or "429" in str(exc):
-        return True
+        return exc.response.status_code == 429 or 500 <= exc.response.status_code <= 599
     return False
 
 
@@ -106,7 +98,11 @@ class TriageService:
                 if attempt < self.settings.AI_MAX_RETRIES and is_retryable_exception(exc):
                     # Jittered backoff (e.g. 100ms - 300ms)
                     jitter = random.uniform(0.1, 0.3)
-                    logger.info(f"Retrying triage call after {jitter:.2f}s due to: {exc}")
+                    logger.info(
+                        "Retrying triage call after %.2fs; error_class=%s",
+                        jitter,
+                        type(exc).__name__,
+                    )
                     await asyncio.sleep(jitter)
                     continue
 
