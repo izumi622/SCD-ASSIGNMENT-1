@@ -1,5 +1,4 @@
-# ── CD Pipeline — Test, Build, Push (Commit SHA), Deploy to Cluster ──
-# Triggered on push to main (after PR merge)
+# CD Pipeline: Test, Build, Push, Deploy, and Verify
 name: CD
 
 on:
@@ -16,7 +15,6 @@ env:
   FRONTEND_IMAGE: ghcr.io/izumi622/scd-assignment-1/frontend
 
 jobs:
-  # ── Gating Test Job: runs full test suite on merged main ────────
   test:
     name: Full Test Suite Gating
     runs-on: ubuntu-latest
@@ -80,7 +78,6 @@ jobs:
           npm test
           npm run build
 
-  # ── Build & Push: ONLY runs if test passes (needs: [test]) ──────
   build-push:
     name: Build & Push Images (Tagged by Commit SHA)
     runs-on: ubuntu-latest
@@ -106,7 +103,6 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # Build and push tagged strictly by commit SHA (never latest for deployment)
       - name: Build & push backend image
         id: backend_image
         uses: docker/build-push-action@v5
@@ -131,7 +127,6 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # Generate SBOM with Syft
       - name: Generate Backend SBOM
         uses: anchore/sbom-action@v0
         with:
@@ -152,7 +147,6 @@ jobs:
           name: sboms
           path: "*.spdx.json"
 
-  # ── Deploy & Smoke Test: verifies rollout and asserts failure on error ──
   deploy-k8s:
     name: Deploy to Kind Cluster & Verify Rollout
     runs-on: ubuntu-latest
@@ -261,6 +255,32 @@ jobs:
           curl --fail --silent --show-error -H 'Host: civicpulse.local' \
             "http://127.0.0.1:18080/api/complaints/$complaint_id" \
             | python3 -c 'import json,sys; assert json.load(sys.stdin)["category"] == "water"'
+
+      - name: Verify application stability for 90 seconds
+        timeout-minutes: 3
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 10); do
+            for app in backend frontend; do
+              kubectl get pods -n civicpulse -l app="$app" -o json > /tmp/app-pods.json
+              if ! jq -e '
+                [.items[] | select(.metadata.deletionTimestamp == null)] |
+                length >= 2 and all(.[];
+                  .status.phase == "Running" and
+                  any(.status.conditions[]?; .type == "Ready" and .status == "True") and
+                  all(.status.containerStatuses[]?;
+                    .ready == true and .restartCount == 0)
+                )
+              ' /tmp/app-pods.json > /dev/null; then
+                echo "::error::$app has unready or restarted pods"
+                kubectl get pods -n civicpulse -o wide
+                kubectl describe pods -n civicpulse -l app="$app"
+                exit 1
+              fi
+            done
+            echo "Stability check $attempt/10 passed"
+            if [ "$attempt" -lt 10 ]; then sleep 10; fi
+          done
 
       - name: Print autoscaling status
         run: |
