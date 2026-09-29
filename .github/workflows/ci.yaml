@@ -245,3 +245,21 @@ jobs:
       - name: Tear down Compose
         if: always()
         run: docker compose down -v
+
+
+  evidence-tooling:
+    name: Evidence Tooling Checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Check evidence tools
+        run: |
+          pip install ruff pytest
+          ruff check --config backend/pyproject.toml scripts/evidence tests/automation
+          ruff format --check --config backend/pyproject.toml scripts/evidence tests/automation
+          pytest -q tests/automation
+          node --input-type=module --check < load/evidence.js
+          node --input-type=module --check < load/k6-script.js
