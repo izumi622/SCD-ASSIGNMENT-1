@@ -1,5 +1,6 @@
 import asyncio
 import hashlib
+import json
 import logging
 import random
 import time
@@ -59,7 +60,7 @@ class TriageService:
         self.recent_outcomes: Deque[TriageOutcome] = deque(maxlen=20)
 
     def _compute_hash(self, text: str, location: str) -> str:
-        content = f"{location.strip().lower()}|{text.strip().lower()}"
+        content = json.dumps([location.strip().lower(), text.strip().lower()], ensure_ascii=False)
         return hashlib.sha256(content.encode("utf-8")).hexdigest()
 
     async def triage_complaint(
