@@ -1,5 +1,6 @@
 import json
 import logging
+import math
 import time
 from typing import Any, Dict, Optional, Tuple
 
@@ -120,13 +121,18 @@ class CacheProvider:
         if r:
             try:
                 cached_val = await r.get(cache_key)
-                if cached_val:
+                payload = json.loads(cached_val) if cached_val else None
+                if payload is not None:
                     self._triage_hits += 1
-                    await r.incr("civicpulse:triage_stats:hits")
-                    return json.loads(cached_val)
-                self._triage_misses += 1
-                await r.incr("civicpulse:triage_stats:misses")
-                return None
+                    metric = "hits"
+                else:
+                    self._triage_misses += 1
+                    metric = "misses"
+                try:
+                    await r.incr(f"civicpulse:triage_stats:{metric}")
+                except Exception:
+                    logger.warning("Redis triage metric update failed")
+                return payload
             except Exception as e:
                 logger.warning(f"Redis get_triage_cache error: {e}")
 
@@ -187,7 +193,10 @@ class CacheProvider:
         """Fixed-window distributed rate limiter in Redis.
         Returns (is_allowed, retry_after_seconds).
         """
-        now = int(time.time())
+        if limit < 1 or window_seconds < 1:
+            raise ValueError("Rate limit and window must be positive")
+        timestamp = time.time()
+        now = int(timestamp)
         window_bucket = now // window_seconds
         cache_key = f"civicpulse:ratelimit:{client_ip}:{window_bucket}"
         retry_after = window_seconds - (now % window_seconds)
@@ -207,13 +216,14 @@ class CacheProvider:
 
         # In-memory sliding window fallback
         timestamps = self._in_memory_rate_limits.setdefault(client_ip, [])
-        cutoff = time.time() - window_seconds
+        cutoff = timestamp - window_seconds
         # Filter older timestamps
         self._in_memory_rate_limits[client_ip] = [t for t in timestamps if t > cutoff]
         if len(self._in_memory_rate_limits[client_ip]) >= limit:
-            return False, max(1, retry_after)
+            oldest = self._in_memory_rate_limits[client_ip][0]
+            return False, max(1, math.ceil(oldest + window_seconds - timestamp))
 
-        self._in_memory_rate_limits[client_ip].append(time.time())
+        self._in_memory_rate_limits[client_ip].append(timestamp)
         return True, 0
 
 

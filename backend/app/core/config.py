@@ -1,6 +1,7 @@
 from functools import lru_cache
 from typing import Optional
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -27,9 +28,9 @@ class Settings(BaseSettings):
     REDIS_URL: str = "redis://redis:6379/0"
 
     # Rate Limiting & Caching
-    RATE_LIMIT_PER_MINUTE: int = 60
-    STATS_CACHE_TTL_SECONDS: int = 30
-    TRIAGE_CACHE_TTL_SECONDS: int = 86400  # 24 hours
+    RATE_LIMIT_PER_MINUTE: int = Field(default=60, gt=0)
+    STATS_CACHE_TTL_SECONDS: int = Field(default=30, gt=0)
+    TRIAGE_CACHE_TTL_SECONDS: int = Field(default=86400, gt=0)  # 24 hours
 
     # AI Triage
     TRIAGE_PROVIDER: str = "simulated"  # llm, ollama, rules, simulated
@@ -39,8 +40,8 @@ class Settings(BaseSettings):
     OLLAMA_MODEL: str = "llama3.2:1b"
 
     # Timeout & Retry settings for AI providers
-    AI_TIMEOUT_SECONDS: float = 10.0
-    AI_MAX_RETRIES: int = 1
+    AI_TIMEOUT_SECONDS: float = Field(default=10.0, gt=0, le=10.0)
+    AI_MAX_RETRIES: int = Field(default=1, ge=0, le=1)
 
 
 @lru_cache

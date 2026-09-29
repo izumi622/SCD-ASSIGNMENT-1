@@ -1,5 +1,6 @@
 import asyncio
 import hashlib
+import json
 import logging
 import random
 import time
@@ -8,6 +9,7 @@ from datetime import datetime, timezone
 from typing import Deque, List, Tuple
 
 import httpx
+from pydantic import ValidationError
 
 from app.core.config import get_settings
 from app.models.schemas import TriageOutcome
@@ -16,25 +18,17 @@ from app.providers.metrics import TRIAGE_DURATION_SECONDS, TRIAGE_FALLBACK_TOTAL
 from app.providers.triage.base import TriageProvider, TriageResult
 from app.providers.triage.factory import get_triage_provider
 from app.providers.triage.rules import RuleBasedTriage
+from app.providers.triage.simulated import SimulatedRateLimitError
 
 logger = logging.getLogger(__name__)
 
 
 def is_retryable_exception(exc: Exception) -> bool:
     """Retry once, with jitter — on timeout, 429 and 5xx only. Never retry a 400."""
-    if isinstance(exc, (TimeoutError, asyncio.TimeoutError)):
+    if isinstance(exc, (TimeoutError, httpx.TimeoutException, SimulatedRateLimitError)):
         return True
     if isinstance(exc, httpx.HTTPStatusError):
-        code = exc.response.status_code
-        if code == 429 or 500 <= code <= 599:
-            return True
-        return False
-    if isinstance(exc, httpx.RequestError):
-        return True
-    # For custom simulated exceptions
-    exc_name = exc.__class__.__name__
-    if "Timeout" in exc_name or "RateLimit" in exc_name or "500" in str(exc) or "429" in str(exc):
-        return True
+        return exc.response.status_code == 429 or 500 <= exc.response.status_code <= 599
     return False
 
 
@@ -59,7 +53,7 @@ class TriageService:
         self.recent_outcomes: Deque[TriageOutcome] = deque(maxlen=20)
 
     def _compute_hash(self, text: str, location: str) -> str:
-        content = f"{location.strip().lower()}|{text.strip().lower()}"
+        content = json.dumps([location.strip().lower(), text.strip().lower()], ensure_ascii=False)
         return hashlib.sha256(content.encode("utf-8")).hexdigest()
 
     async def triage_complaint(
@@ -73,18 +67,22 @@ class TriageService:
         # 1. Check Redis content-hash cache (24h TTL)
         cached_result = await self.cache.get_triage_cache(content_hash)
         if cached_result:
-            cached_triage_result = TriageResult.model_validate(cached_result)
-            provider_name = cached_result.get("triaged_by", self.provider.name)
-            latency_ms = 0
-            self.recent_outcomes.append(
-                TriageOutcome(
-                    provider=f"{provider_name}:cache",
-                    latency_ms=0,
-                    fallback=False,
-                    timestamp=datetime.now(timezone.utc),
+            try:
+                cached_triage_result = TriageResult.model_validate(cached_result)
+            except ValidationError:
+                # Old or invalid cache entries are misses, never user-facing failures.
+                logger.warning("Ignoring invalid triage cache entry")
+            else:
+                provider_name = cached_result.get("triaged_by", self.provider.name)
+                self.recent_outcomes.append(
+                    TriageOutcome(
+                        provider=f"{provider_name}:cache",
+                        latency_ms=0,
+                        fallback=False,
+                        timestamp=datetime.now(timezone.utc),
+                    )
                 )
-            )
-            return cached_triage_result, provider_name, latency_ms
+                return cached_triage_result, provider_name, 0
 
         start_time = time.perf_counter()
         active_provider_name = self.provider.name
@@ -100,12 +98,17 @@ class TriageService:
                     asyncio.to_thread(self.provider.triage, text, location),
                     timeout=self.settings.AI_TIMEOUT_SECONDS,
                 )
+                result = TriageResult.model_validate(result)
                 break
             except Exception as exc:
                 if attempt < self.settings.AI_MAX_RETRIES and is_retryable_exception(exc):
                     # Jittered backoff (e.g. 100ms - 300ms)
                     jitter = random.uniform(0.1, 0.3)
-                    logger.info(f"Retrying triage call after {jitter:.2f}s due to: {exc}")
+                    logger.info(
+                        "Retrying triage call after %.2fs; error_class=%s",
+                        jitter,
+                        type(exc).__name__,
+                    )
                     await asyncio.sleep(jitter)
                     continue
 
