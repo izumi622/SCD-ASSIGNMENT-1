@@ -40,16 +40,12 @@ docker compose -f docker-compose.yaml -f docker-compose.prod.yaml up -d
 
 ### Kubernetes
 
-```bash
-kubectl apply -f k8s/namespace.yaml
-kubectl apply -f k8s/secrets.yaml -f k8s/configmap.yaml
-kubectl apply -f k8s/postgres.yaml -f k8s/redis.yaml
-kubectl wait --for=condition=ready pod -l app=postgres -n civicpulse --timeout=60s
-kubectl apply -f k8s/migration-job.yaml
-kubectl wait --for=condition=complete job/migrations -n civicpulse --timeout=120s
-kubectl apply -f k8s/backend.yaml -f k8s/frontend.yaml
-kubectl apply -f k8s/ingress.yaml -f k8s/hpa.yaml
-```
+Use the automated `Assignment Evidence` workflow for an isolated test deployment. It uses
+`k8s/base` manifests, fresh generated database credentials, and images built from the tested
+commit. It installs Metrics Server and VPA in recommendation-only mode. Do not apply the
+placeholder secrets or `IMAGE_TAG` values directly to a real cluster.
+
+See [the evidence guide](EVIDENCE-AUTOMATION.md) for execution and remaining manual gates.
 
 ## Health Checks
 
@@ -102,8 +98,10 @@ TRIAGE_PROVIDER=rules  # or: llm, ollama, simulated
 
 Then restart the backend:
 ```bash
-docker compose restart backend
+docker compose up -d --no-deps --force-recreate backend
 ```
+
+A restart does not reload changed Compose environment values; recreating the container does.
 
 ## Troubleshooting
 
@@ -159,19 +157,20 @@ docker compose restart backend
 
 ### Docker Compose
 
-```bash
-docker compose up --scale backend=3
-```
+The development backend publishes a fixed host port, so scaling it directly causes port conflicts.
+Use the Kubernetes deployment for the multi-replica scaling exercise.
+The HPA controls replicas while it is enabled; a manual replica change is not a lasting override.
 
 ### Kubernetes HPA
 
 The HPA is pre-configured:
-- **Backend**: 2–8 replicas (CPU 70%, Memory 80%)
+- **Backend**: 2–10 replicas (CPU 60%, Memory 80%)
 - **Frontend**: 2–6 replicas (CPU 75%)
 
-Manual override:
+Inspect autoscaling:
 ```bash
-kubectl scale deployment backend --replicas=5 -n civicpulse
+kubectl get hpa -n civicpulse
+kubectl describe hpa backend-hpa -n civicpulse
 ```
 
 ## Disaster Recovery
