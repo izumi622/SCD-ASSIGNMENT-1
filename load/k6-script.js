@@ -5,6 +5,7 @@ import { Counter, Rate } from 'k6/metrics';
 // Custom metrics
 export const errorRate = new Rate('errors');
 export const complaintsCreated = new Counter('complaints_created');
+export const throttled = new Counter('throttled_requests');
 
 // Target host can be overridden via TARGET_URL environment variable
 const BASE_URL = __ENV.TARGET_URL || 'http://localhost:8000';
@@ -36,12 +37,14 @@ export default function () {
 
   // 1. Check Liveness Probe (GET /health)
   const healthRes = http.get(`${BASE_URL}/health`);
+  errorRate.add(healthRes.status !== 200);
   check(healthRes, {
     'health check status is 200': (r) => r.status === 200,
   });
 
   // 2. Fetch Cached Statistics (GET /api/stats)
   const statsRes = http.get(`${BASE_URL}/api/stats`);
+  errorRate.add(statsRes.status !== 200);
   check(statsRes, {
     'stats status is 200': (r) => r.status === 200,
     'stats returns json': (r) => r.headers['Content-Type'] && r.headers['Content-Type'].includes('application/json'),
@@ -49,6 +52,7 @@ export default function () {
 
   // 3. Browse Complaints List (GET /api/complaints?page=1&page_size=10)
   const listRes = http.get(`${BASE_URL}/api/complaints?page=1&page_size=10`);
+  errorRate.add(listRes.status !== 200);
   check(listRes, {
     'complaints list status is 200': (r) => r.status === 200,
   });
@@ -62,14 +66,15 @@ export default function () {
     });
 
     const postRes = http.post(`${BASE_URL}/api/complaints`, payload, { headers });
-    const success = check(postRes, {
+    errorRate.add(postRes.status !== 201 && postRes.status !== 429);
+    throttled.add(postRes.status === 429 ? 1 : 0);
+    check(postRes, {
       'complaint intake status is 201 or 429': (r) => r.status === 201 || r.status === 429,
     });
 
     if (postRes.status === 201) {
       complaintsCreated.add(1);
-    } else if (postRes.status !== 429) {
-      errorRate.add(1);
+
     }
   }
 
