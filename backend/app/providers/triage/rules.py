@@ -13,6 +13,8 @@ class RuleBasedTriage:
     CATEGORY_KEYWORDS = {
         Category.water: [
             "water",
+            "waterpipe",
+            "waterpipes",
             "leak",
             "pipe",
             "burst",

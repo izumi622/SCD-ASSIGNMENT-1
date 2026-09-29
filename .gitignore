@@ -61,3 +61,6 @@ Desktop.ini
 
 # Docker / Kubernetes local test artifacts
 *.log
+
+# Generated experiment output: review and curate before adding submission evidence
+evidence-output/

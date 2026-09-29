@@ -37,26 +37,31 @@ class CacheProvider:
             return None
 
         if self._redis is None:
+            client = None
             try:
                 client = aioredis.from_url(
                     self.redis_url,
                     encoding="utf-8",
                     decode_responses=True,
                     socket_connect_timeout=0.5,
+                    socket_timeout=0.5,
                 )
                 await client.ping()
                 self._redis = client
             except Exception as e:
                 self._last_failed_connect_time = time.time()
-                logger.warning(
-                    f"Redis unavailable ({e}), using in-memory cache/rate-limiter fallback."
-                )
+                logger.warning("Redis unavailable (%s), using in-memory fallback", type(e).__name__)
+                if client is not None:
+                    try:
+                        await client.aclose()
+                    except Exception:
+                        logger.debug("Failed to close unavailable Redis client")
                 self._redis = None
         return self._redis
 
     async def close(self) -> None:
         if self._redis is not None:
-            await self._redis.close()
+            await self._redis.aclose()
             self._redis = None
 
     # --- Job 1: Stats Read-Through Cache ---
